@@ -1,0 +1,32 @@
+
+import network
+import socket
+import time
+
+# Crear red Wi-Fi
+wifi = network.WLAN(network.AP_IF)
+wifi.active(True)
+
+wifi.config(essid="Berenisse_Arce", password="12345678")
+
+print("Creando red Wi-Fi...")
+
+while not wifi.active():
+    time.sleep(1)
+
+print("Red creada")
+print("IP:", wifi.ifconfig()[0])
+
+# Configurar comunicacion UDP
+direccion = ("192.168.4.2", 5000)
+
+emisor = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+while True:
+    mensaje = "Hola desde el ESP32 emisor"
+
+    emisor.sendto(mensaje.encode(), direccion)
+
+    print("Mensaje enviado:", mensaje)
+
+    time.sleep(2)
