@@ -1,0 +1,30 @@
+
+import network
+import socket
+import time
+
+# Conectar a la red del emisor
+wifi = network.WLAN(network.STA_IF)
+wifi.active(True)
+
+wifi.connect("Berenisse_Arce", "12345678")
+
+print("Conectando al emisor...")
+
+while not wifi.isconnected():
+    time.sleep(1)
+
+print("Conectado")
+print("IP:", wifi.ifconfig()[0])
+
+# Configurar receptor UDP
+receptor = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+receptor.bind(("0.0.0.0", 5000))
+
+print("Esperando mensajes...")
+
+while True:
+    mensaje, direccion = receptor.recvfrom(1024)
+
+    print("Mensaje recibido:", mensaje.decode())
