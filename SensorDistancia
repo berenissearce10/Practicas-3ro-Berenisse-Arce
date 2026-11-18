@@ -1,0 +1,84 @@
+
+#include "BluetoothSerial.h"
+
+BluetoothSerial SerialBT;
+
+// LEDs
+const int LED_VERDE = 18;
+const int LED_ROJO = 19;
+
+// Sensor ultrasónico
+const int TRIG = 5;
+const int ECHO = 21;
+
+// Distancia límite
+const int LIMITE = 20;
+
+long duracion;
+int distancia;
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(LED_VERDE, OUTPUT);
+  pinMode(LED_ROJO, OUTPUT);
+
+  pinMode(TRIG, OUTPUT);
+  pinMode(ECHO, INPUT);
+
+  digitalWrite(LED_VERDE, LOW);
+  digitalWrite(LED_ROJO, LOW);
+
+  // Nombre Bluetooth
+  SerialBT.begin("Berenisse Arce");
+
+  Serial.println("Sistema iniciado");
+}
+
+void loop() {
+
+  // Activar sensor
+  digitalWrite(TRIG, LOW);
+  delayMicroseconds(2);
+
+  digitalWrite(TRIG, HIGH);
+  delayMicroseconds(10);
+
+  digitalWrite(TRIG, LOW);
+
+  // Medir distancia
+  duracion = pulseIn(ECHO, HIGH, 30000);
+
+  if (duracion == 0) {
+    distancia = -1;
+  } else {
+    distancia = duracion * 0.034 / 2;
+  }
+
+  // Objeto cerca
+  if (distancia > 0 && distancia <= LIMITE) {
+
+    digitalWrite(LED_VERDE, HIGH);
+    digitalWrite(LED_ROJO, LOW);
+
+    SerialBT.print("CERCA,");
+    SerialBT.println(distancia);
+
+    Serial.println("OBJETO CERCA");
+
+  }
+
+  // Objeto lejos
+  else {
+
+    digitalWrite(LED_VERDE, LOW);
+    digitalWrite(LED_ROJO, HIGH);
+
+    SerialBT.print("LEJOS,");
+    SerialBT.println(distancia);
+
+    Serial.println("OBJETO LEJOS");
+  }
+
+  delay(300);
+}
