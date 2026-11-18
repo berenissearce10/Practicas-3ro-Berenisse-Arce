@@ -1,0 +1,61 @@
+
+import network
+import time
+import ubinascii
+
+# Datos de la red Wi-Fi
+SSID = "Berenisse Arce"
+PASSWORD = "12345678"
+
+# Crear conexion Wi-Fi
+wifi = network.WLAN(network.STA_IF)
+wifi.active(True)
+
+print("Iniciando conexion Wi-Fi...")
+print("Conectando a Wi-Fi...")
+
+# Conectar a la red
+wifi.connect(SSID, PASSWORD)
+
+# Esperar la conexion
+intentos = 0
+
+while not wifi.isconnected() and intentos < 20:
+    print("Esperando conexion...")
+    time.sleep(1)
+    intentos += 1
+
+# Comprobar conexion
+if wifi.isconnected():
+
+    print("--------------------------")
+    print("CONECTADO A WI-FI")
+    print("Estado: CONECTADO")
+
+    # Mostrar direccion IP
+    print("Direccion IP:", wifi.ifconfig()[0])
+
+    # Obtener direccion MAC
+    mac = ubinascii.hexlify(
+        wifi.config('mac'), ':'
+    ).decode().upper()
+
+    print("Direccion MAC:", EC:E3:34:D9:BC:F8)
+
+    print("--------------------------")
+
+else:
+    print("--------------------------")
+    print("DESCONECTADO DE WI-FI")
+    print("No se pudo conectar")
+    print("--------------------------")
+
+# Comprobar estado continuamente
+while True:
+
+    if wifi.isconnected():
+        print("Estado: CONECTADO")
+    else:
+        print("Estado: DESCONECTADO")
+
+    time.sleep(3)
