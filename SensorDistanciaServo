@@ -1,0 +1,106 @@
+
+#include "BluetoothSerial.h"
+#include <ESP32Servo.h>
+
+BluetoothSerial SerialBT;
+Servo miServo;
+
+// Pines de los LEDs
+const int LED_VERDE = 18;
+const int LED_ROJO = 19;
+
+// Pines del sensor
+const int TRIG = 5;
+const int ECHO = 21;
+
+// Pin del servomotor
+const int SERVO_PIN = 13;
+
+// Distancia limite
+const int LIMITE = 20;
+
+// Posiciones del servo
+const int ABIERTO = 90;
+const int CERRADO = 0;
+
+long duracion;
+int distancia;
+
+void setup() {
+
+  Serial.begin(115200);
+
+  // Configurar LEDs
+  pinMode(LED_VERDE, OUTPUT);
+  pinMode(LED_ROJO, OUTPUT);
+
+  // Configurar sensor
+  pinMode(TRIG, OUTPUT);
+  pinMode(ECHO, INPUT);
+
+  // Configurar servo
+  miServo.setPeriodHertz(50);
+  miServo.attach(SERVO_PIN, 500, 2400);
+  miServo.write(CERRADO);
+
+  // Apagar LEDs
+  digitalWrite(LED_VERDE, LOW);
+  digitalWrite(LED_ROJO, LOW);
+
+  // Iniciar Bluetooth
+  SerialBT.begin("Berenisse Arce");
+
+  Serial.println("Sistema iniciado");
+}
+
+void loop() {
+
+  // Activar sensor
+  digitalWrite(TRIG, LOW);
+  delayMicroseconds(2);
+
+  digitalWrite(TRIG, HIGH);
+  delayMicroseconds(10);
+
+  digitalWrite(TRIG, LOW);
+
+  // Medir distancia
+  duracion = pulseIn(ECHO, HIGH, 30000);
+
+  if (duracion == 0) {
+    distancia = -1;
+  } else {
+    distancia = duracion * 0.034 / 2;
+  }
+
+  // Si el objeto esta cerca
+  if (distancia > 0 && distancia <= LIMITE) {
+
+    digitalWrite(LED_VERDE, HIGH);
+    digitalWrite(LED_ROJO, LOW);
+
+    miServo.write(ABIERTO);
+
+    SerialBT.print("CERCA,");
+    SerialBT.println(distancia);
+
+    Serial.println("OBJETO CERCA - PUERTA ABIERTA");
+
+  }
+
+  // Si el objeto esta lejos
+  else {
+
+    digitalWrite(LED_VERDE, LOW);
+    digitalWrite(LED_ROJO, HIGH);
+
+    miServo.write(CERRADO);
+
+    SerialBT.print("LEJOS,");
+    SerialBT.println(distancia);
+
+    Serial.println("OBJETO LEJOS - PUERTA CERRADA");
+  }
+
+  delay(300);
+}
