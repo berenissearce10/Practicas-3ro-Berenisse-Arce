@@ -1,0 +1,310 @@
+/*
+  SISTEMA COMBINADO - ESP32
+  - Sensor ultrasónico + Servo + LEDs
+  - Control automático y Bluetooth
+  - Relé del foco por Bluetooth y aplausos
+*/
+
+#include "BluetoothSerial.h"
+#include <ESP32Servo.h>
+
+// ========== PINES ==========
+#define TRIG_PIN      23
+#define ECHO_PIN      22
+#define SERVO_PIN     18
+#define LED_ROJO      19
+#define LED_VERDE     21
+
+#define RELE          26
+#define SENSOR        25
+
+// RELÉ ACTIVO EN BAJO
+#define RELE_ENCENDIDO LOW
+#define RELE_APAGADO   HIGH
+
+// ========== OBJETOS ==========
+BluetoothSerial SerialBT;
+Servo puerta;
+
+// ========== DISTANCIA Y PUERTA ==========
+long distancia = 999;
+
+unsigned long ultimoEnvio = 0;
+const unsigned long INTERVALO_ENVIO = 200;
+
+const int DISTANCIA_ABRIR = 20;
+const int DISTANCIA_CERRAR = 21;
+
+bool puertaAbierta = false;
+bool aperturaManual = false;
+
+unsigned long inicioSinObstaculo = 0;
+const unsigned long TIEMPO_ESPERA_CIERRE = 2500;
+
+// ÁNGULOS DEL SERVO
+const int ANGULO_CERRADO = 0;
+const int ANGULO_ABIERTO = 90;
+
+int anguloActual = ANGULO_CERRADO;
+
+const int PASO_ABRIR = 1;
+const int RETARDO_ABRIR = 25;
+
+const int PASO_CERRAR = 1;
+const int RETARDO_CIERRE = 40;
+
+// ========== FOCO ==========
+bool estadoFoco = false;
+
+int estadoAnterior = HIGH;
+
+unsigned long ultimoAplauso = 0;
+const unsigned long ESPERA_APLAUSO = 500;
+
+// ========== CONTROL DEL FOCO ==========
+void controlarFoco(bool estado) {
+
+  estadoFoco = estado;
+
+  digitalWrite(RELE, estadoFoco ? RELE_ENCENDIDO : RELE_APAGADO);
+
+  if (estadoFoco) {
+    Serial.println("FOCO ENCENDIDO");
+    SerialBT.println("FOCO ENCENDIDO");
+  } else {
+    Serial.println("FOCO APAGADO");
+    SerialBT.println("FOCO APAGADO");
+  }
+}
+
+// ========== MEDIR DISTANCIA ==========
+long medirDistancia() {
+
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(3);
+
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duracion = pulseIn(ECHO_PIN, HIGH, 30000);
+
+  if (duracion == 0) return 999;
+
+  long dist = (duracion * 0.0343) / 2;
+
+  if (dist < 2) return 999;
+  if (dist > 400) dist = 400;
+
+  return dist;
+}
+
+// ========== MOVIMIENTO DEL SERVO ==========
+void moverPuerta(int destino) {
+
+  bool cerrando = (destino < anguloActual);
+
+  int magnitudPaso = cerrando ? PASO_CERRAR : PASO_ABRIR;
+
+  int retardo = cerrando ? RETARDO_CIERRE : RETARDO_ABRIR;
+
+  int paso = cerrando ? -magnitudPaso : magnitudPaso;
+
+  while (anguloActual != destino) {
+
+    if ((paso > 0 && anguloActual + paso > destino) ||
+        (paso < 0 && anguloActual + paso < destino)) {
+
+      anguloActual = destino;
+
+    } else {
+
+      anguloActual += paso;
+    }
+
+    puerta.write(anguloActual);
+
+    delay(retardo);
+  }
+}
+
+// ========== ESTADO DE LA PUERTA ==========
+void aplicarEstadoPuerta(bool abierta, bool manual = false) {
+
+  puertaAbierta = abierta;
+  aperturaManual = manual;
+
+  inicioSinObstaculo = 0;
+
+  if (abierta) {
+
+    digitalWrite(LED_ROJO, HIGH);
+    digitalWrite(LED_VERDE, LOW);
+
+    moverPuerta(ANGULO_ABIERTO);
+
+  } else {
+
+    digitalWrite(LED_ROJO, LOW);
+    digitalWrite(LED_VERDE, HIGH);
+
+    moverPuerta(ANGULO_CERRADO);
+  }
+}
+
+// ========== CONFIGURACIÓN ==========
+void setup() {
+
+  Serial.begin(115200);
+
+  // RELÉ
+  pinMode(RELE, OUTPUT);
+  digitalWrite(RELE, RELE_APAGADO);
+
+  pinMode(SENSOR, INPUT);
+
+  // SENSOR ULTRASÓNICO
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  // LEDS
+  pinMode(LED_ROJO, OUTPUT);
+  pinMode(LED_VERDE, OUTPUT);
+
+  // SERVO
+  puerta.setPeriodHertz(50);
+
+  puerta.attach(SERVO_PIN, 500, 2400);
+
+  anguloActual = ANGULO_CERRADO;
+
+  puerta.write(ANGULO_CERRADO);
+
+  // ESTADO INICIAL
+  digitalWrite(LED_ROJO, LOW);
+  digitalWrite(LED_VERDE, HIGH);
+
+  // BLUETOOTH
+  SerialBT.begin("bere");
+
+  Serial.println("==========================");
+  Serial.println("SISTEMA INICIADO");
+  Serial.println("Bluetooth: bere");
+  Serial.println("==========================");
+
+  Serial.println("COMANDOS:");
+  Serial.println("C = Abrir puerta manual");
+  Serial.println("L = Cerrar puerta y volver a automático");
+  Serial.println("1 = Encender foco");
+  Serial.println("0 = Apagar foco");
+}
+
+// ========== PROGRAMA PRINCIPAL ==========
+void loop() {
+
+  // 1. COMANDOS BLUETOOTH
+
+  while (SerialBT.available()) {
+
+    char comando = SerialBT.read();
+
+    if (comando == '\r' || comando == '\n') {
+      continue;
+    }
+
+    if (comando == 'C' || comando == 'c') {
+
+      aplicarEstadoPuerta(true, true);
+
+      Serial.println("Comando C -> PUERTA ABIERTA MANUAL");
+
+    }
+
+    else if (comando == 'L' || comando == 'l') {
+
+      aplicarEstadoPuerta(false, false);
+
+      Serial.println("Comando L -> PUERTA CERRADA AUTOMATICO");
+
+    }
+
+    else if (comando == '1') {
+
+      controlarFoco(true);
+
+    }
+
+    else if (comando == '0') {
+
+      controlarFoco(false);
+
+    }
+  }
+
+  // 2. SENSOR DE SONIDO / APLAUSOS
+
+  int sonido = digitalRead(SENSOR);
+
+  if (sonido == LOW && estadoAnterior == HIGH) {
+
+    if (millis() - ultimoAplauso > ESPERA_APLAUSO) {
+
+      controlarFoco(!estadoFoco);
+
+      ultimoAplauso = millis();
+    }
+  }
+
+  estadoAnterior = sonido;
+
+  // 3. SENSOR ULTRASÓNICO Y CONTROL AUTOMÁTICO
+
+  if (millis() - ultimoEnvio >= INTERVALO_ENVIO) {
+
+    ultimoEnvio = millis();
+
+    distancia = medirDistancia();
+
+    // ENVIAR DISTANCIA POR BLUETOOTH
+    SerialBT.print(distancia);
+    SerialBT.print('\n');
+
+    Serial.print("Distancia: ");
+    Serial.print(distancia);
+    Serial.println(" cm");
+
+    // DETECTAR OBJETO CERCANO
+    if (distancia <= DISTANCIA_ABRIR) {
+
+      inicioSinObstaculo = 0;
+
+      if (!puertaAbierta) {
+
+        Serial.println("OBJETO DETECTADO -> ABRIENDO PUERTA");
+
+        aplicarEstadoPuerta(true, false);
+      }
+    }
+
+    // DETECTAR AUSENCIA DE OBJETO
+    else if (distancia >= DISTANCIA_CERRAR) {
+
+      if (puertaAbierta && !aperturaManual) {
+
+        if (inicioSinObstaculo == 0) {
+
+          inicioSinObstaculo = millis();
+
+        }
+
+        else if (millis() - inicioSinObstaculo >= TIEMPO_ESPERA_CIERRE) {
+
+          Serial.println("SIN OBSTACULO -> CERRANDO PUERTA");
+
+          aplicarEstadoPuerta(false, false);
+        }
+      }
+    }
+  }
+}
